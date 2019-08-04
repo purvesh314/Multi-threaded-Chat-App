@@ -84,7 +84,7 @@ public class Server
 				System.out.println("Creating a new handler for this client..."); 
 
 				// Create a new handler object for handling this request. 
-				ClientHandler mtch = new ClientHandler(s,name, dis, dos); 
+				ClientHandler mtch = new ClientHandler(s,name, dis, dos,conn,st); 
 
 				// Create a new Thread with this object. 
 				Thread t = new Thread(mtch); 
@@ -120,15 +120,21 @@ class ClientHandler implements Runnable
 	final DataOutputStream dos; 
 	Socket s; 
 	boolean isloggedin; 
+
+	static Connection conn=null;
+	static Statement st=null;
 	
 	// constructor 
 	public ClientHandler(Socket s, String name, 
-							DataInputStream dis, DataOutputStream dos) { 
+							DataInputStream dis, DataOutputStream dos, Connection conn, Statement st) { 
 		this.dis = dis; 
 		this.dos = dos; 
 		this.name = name; 
 		this.s = s; 
-		this.isloggedin=true; 
+		this.isloggedin=true;
+
+		this.conn=conn;
+		this.st=st; 
 	} 
 
 	@Override
@@ -155,6 +161,33 @@ class ClientHandler implements Runnable
 				String MsgToSend = st.nextToken(); 
 				String recipient = st.nextToken(); 
 
+				//Chat history
+				if(MsgToSend.equals("history"))
+				{
+					System.out.println("In history");
+					try
+					{
+						PreparedStatement ps=conn.prepareStatement("select * from messages where (sender=? and receiver=?) or (sender=? and receiver=?)");				
+						ps.setString(1,this.name);
+						ps.setString(2,recipient);
+						ps.setString(3,recipient);
+						ps.setString(4,this.name);
+						ResultSet res=ps.executeQuery();
+						while(res.next())
+						{
+							String sd=res.getString("sender");
+							String msg=res.getString("message");
+							System.out.println(sd+" : "+msg);
+							dos.writeUTF(sd+" : "+msg);
+						}
+						ps.close();
+					}
+					catch(SQLException e)
+					{
+						e.printStackTrace();
+					}	
+				}
+
 				// search for the recipient in the connected devices list. 
 				// ar is the vector storing client of active users 
 				for (ClientHandler mc : Server.ar) 
@@ -164,6 +197,22 @@ class ClientHandler implements Runnable
 					if (mc.name.equals(recipient) && mc.isloggedin==true) 
 					{ 
 						mc.dos.writeUTF(this.name+" : "+MsgToSend); 
+
+						try
+						{
+							PreparedStatement ps=conn.prepareStatement("insert into messages (sender,receiver,message) values(?,?,?)");
+							ps.setString(1,this.name);
+							ps.setString(2,recipient);
+							ps.setString(3,MsgToSend);
+
+							ps.executeUpdate();
+							ps.close();
+						}
+						catch(SQLException e)
+						{
+							e.printStackTrace();
+						}
+
 						break; 
 					} 
 				} 
